@@ -18,6 +18,6 @@ WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
 
 # Exponemos el puerto por defecto de Spring Boot (puedes cambiarlo si usas otro)
-EXPOSE 8084
+EXPOSE 8083
 
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
