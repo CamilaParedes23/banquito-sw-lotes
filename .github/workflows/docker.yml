@@ -24,7 +24,7 @@ jobs:
 
       - name: Build image
         run: |
-          docker build -t ${{ secrets.DOCKER_USERNAME }}/banquito-sw-lotes:latest -f Dockerfile .
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/banquito-sw-lotes:latest -f Docker/Dockerfile .
 
       - name: Push image
         run: |
