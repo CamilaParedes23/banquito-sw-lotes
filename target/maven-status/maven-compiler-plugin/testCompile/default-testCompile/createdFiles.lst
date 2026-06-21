@@ -1,0 +1,5 @@
+com/banquito/switchpagos/batch/controller/BatchControllerTest.class
+com/banquito/switchpagos/batch/client/CoreCustomerClientTest.class
+com/banquito/switchpagos/batch/client/CoreKongTokenProviderTest.class
+com/banquito/switchpagos/batch/client/CoreAccountClientTest.class
+com/banquito/switchpagos/batch/service/impl/BatchProcessingServiceImplTest.class

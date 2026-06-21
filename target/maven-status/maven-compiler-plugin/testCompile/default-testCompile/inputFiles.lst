@@ -1,0 +1,5 @@
+/workspace/src/test/java/com/banquito/switchpagos/batch/client/CoreAccountClientTest.java
+/workspace/src/test/java/com/banquito/switchpagos/batch/client/CoreCustomerClientTest.java
+/workspace/src/test/java/com/banquito/switchpagos/batch/client/CoreKongTokenProviderTest.java
+/workspace/src/test/java/com/banquito/switchpagos/batch/controller/BatchControllerTest.java
+/workspace/src/test/java/com/banquito/switchpagos/batch/service/impl/BatchProcessingServiceImplTest.java
