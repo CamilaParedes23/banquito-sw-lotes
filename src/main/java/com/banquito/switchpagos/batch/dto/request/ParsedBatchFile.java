@@ -8,6 +8,7 @@ import java.util.List;
 public class ParsedBatchFile {
 
     private String companyRuc;
+    private String companyCustomerUuid;
     private String serviceType;
     private OffsetDateTime generatedAt;
     private String sourceAccountNumber;
@@ -24,6 +25,14 @@ public class ParsedBatchFile {
 
     public void setCompanyRuc(String companyRuc) {
         this.companyRuc = companyRuc;
+    }
+
+    public String getCompanyCustomerUuid() {
+        return companyCustomerUuid;
+    }
+
+    public void setCompanyCustomerUuid(String companyCustomerUuid) {
+        this.companyCustomerUuid = companyCustomerUuid;
     }
 
     public String getServiceType() {

@@ -11,7 +11,12 @@ import org.springframework.web.multipart.MultipartFile;
 
 public interface BatchService {
 
-    UploadBatchResponse uploadBatch(MultipartFile file, String companyRuc, String channel, String receivedBy);
+    UploadBatchResponse uploadBatch(
+            MultipartFile file,
+            String companyRuc,
+            String companyCustomerUuid,
+            String channel,
+            String receivedBy);
 
     BatchHistoryPageResponse listBatches(String companyRuc, Integer page, Integer size);
 

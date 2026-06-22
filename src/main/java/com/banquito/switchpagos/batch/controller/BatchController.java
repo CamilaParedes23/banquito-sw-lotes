@@ -9,6 +9,8 @@ import com.banquito.switchpagos.batch.dto.response.UploadBatchResponse;
 import com.banquito.switchpagos.batch.exception.BadRequestException;
 import com.banquito.switchpagos.batch.service.BatchService;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -25,6 +27,8 @@ import org.springframework.util.StringUtils;
 @RequestMapping("/api/v1/batches")
 public class BatchController {
 
+    private static final Logger LOG = LoggerFactory.getLogger(BatchController.class);
+
     private final BatchService batchService;
 
     public BatchController(BatchService batchService) {
@@ -35,8 +39,15 @@ public class BatchController {
     public ResponseEntity<UploadBatchResponse> uploadBatch(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "companyRuc", required = false) String companyRuc,
+            @RequestParam(value = "companyCustomerUuid", required = false) String companyCustomerUuid,
             @RequestParam(value = "channel", required = false) String channel,
             @RequestParam(value = "receivedBy", required = false) String receivedBy) {
+        LOG.info(
+                "Batch upload identity fields. companyRucPresent={}, companyCustomerUuidPresent={}, channelPresent={}, receivedByPresent={}",
+                StringUtils.hasText(companyRuc),
+                StringUtils.hasText(companyCustomerUuid),
+                StringUtils.hasText(channel),
+                StringUtils.hasText(receivedBy));
         if (!StringUtils.hasText(companyRuc)) {
             throw new BadRequestException(
                     "COMPANY_RUC_REQUIRED",
@@ -44,7 +55,7 @@ public class BatchController {
         }
         return ResponseEntity
                 .status(HttpStatus.ACCEPTED)
-                .body(batchService.uploadBatch(file, companyRuc, channel, receivedBy));
+                .body(batchService.uploadBatch(file, companyRuc, companyCustomerUuid, channel, receivedBy));
     }
 
     @GetMapping

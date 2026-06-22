@@ -1,12 +1,12 @@
 package com.banquito.switchpagos.batch.service.impl;
 
 import com.banquito.switchpagos.batch.client.CoreBankingClient;
-import com.banquito.switchpagos.batch.client.CoreAccountClient;
+import com.banquito.switchpagos.batch.client.CoreCompanyAccountValidationClient;
 import com.banquito.switchpagos.batch.client.CoreCustomerClient;
 import com.banquito.switchpagos.batch.dto.request.CoreFundingRequest;
 import com.banquito.switchpagos.batch.dto.request.ParsedBatchFile;
 import com.banquito.switchpagos.batch.dto.response.CoreCustomerResponse;
-import com.banquito.switchpagos.batch.dto.response.CoreAccountResponse;
+import com.banquito.switchpagos.batch.dto.response.CoreCompanyAccountValidationResponse;
 import com.banquito.switchpagos.batch.dto.response.CoreFundingResponse;
 import com.banquito.switchpagos.batch.enums.BatchStatus;
 import com.banquito.switchpagos.batch.mapper.PaymentLineMapper;
@@ -41,7 +41,7 @@ class BatchProcessingServiceImplTest {
     private BatchValidationErrorRepository validationErrorRepository;
     private CoreBankingClient coreBankingClient;
     private CoreCustomerClient coreCustomerClient;
-    private CoreAccountClient coreAccountClient;
+    private CoreCompanyAccountValidationClient companyAccountValidationClient;
     private BatchProcessingServiceImpl service;
 
     @BeforeEach
@@ -52,7 +52,7 @@ class BatchProcessingServiceImplTest {
         BatchPaymentLineRepository paymentLineRepository = mock(BatchPaymentLineRepository.class);
         coreBankingClient = mock(CoreBankingClient.class);
         coreCustomerClient = mock(CoreCustomerClient.class);
-        coreAccountClient = mock(CoreAccountClient.class);
+        companyAccountValidationClient = mock(CoreCompanyAccountValidationClient.class);
         PaymentLineMapper paymentLineMapper = mock(PaymentLineMapper.class);
         PaymentLineEventPublisher eventPublisher = mock(PaymentLineEventPublisher.class);
         when(paymentBatchRepository.existsByFileNameAndFileHashAndStatusInAndReceivedAtAfter(
@@ -66,7 +66,7 @@ class BatchProcessingServiceImplTest {
                 paymentLineRepository,
                 coreBankingClient,
                 coreCustomerClient,
-                coreAccountClient,
+                companyAccountValidationClient,
                 paymentLineMapper,
                 eventPublisher,
                 "2026-06-05",
@@ -78,15 +78,16 @@ class BatchProcessingServiceImplTest {
         PaymentBatch batch = batch();
         ParsedBatchFile parsedBatchFile = validEmptyBatch();
         UUID customerUuid = UUID.randomUUID();
-        CoreCustomerResponse company = customer(customerUuid, "ACTIVO", true);
+        parsedBatchFile.setCompanyCustomerUuid(customerUuid.toString());
         CoreFundingResponse fundingResponse = new CoreFundingResponse();
         fundingResponse.setCoreFundingId(UUID.randomUUID().toString());
         fundingResponse.setStatus("ACTIVA");
         fundingResponse.setAccountingDate(LocalDate.of(2026, 6, 5));
         when(paymentBatchRepository.findById(batch.getBatchId())).thenReturn(Optional.of(batch));
-        when(coreCustomerClient.findByIdentification("1792103456001")).thenReturn(company);
-        when(coreAccountClient.findByAccountNumber("0010000010599"))
-                .thenReturn(account("0010000010599", customerUuid.toString(), "ACTIVA", true, "OPERATIVA"));
+        when(companyAccountValidationClient.validate(
+                customerUuid.toString(),
+                "0010000010599",
+                BigDecimal.TEN)).thenReturn(validCompanyAccount(customerUuid));
         when(coreBankingClient.requestFunding(any(CoreFundingRequest.class))).thenReturn(fundingResponse);
 
         service.processBatch(batch.getBatchId(), parsedBatchFile);
@@ -95,7 +96,18 @@ class BatchProcessingServiceImplTest {
         verify(coreBankingClient).requestFunding(requestCaptor.capture());
         assertEquals(customerUuid.toString(), requestCaptor.getValue().getCompanyCustomerUuid());
         assertEquals("1792103456001", requestCaptor.getValue().getCompanyRuc());
+        assertEquals(new BigDecimal("0.00"), requestCaptor.getValue().getCommissionAmount());
         assertEquals(BatchStatus.PROCESANDO_LINEAS.name(), batch.getStatus());
+        verify(coreCustomerClient, never()).findByIdentification(any());
+    }
+
+    @Test
+    void shouldEstimateCommissionAmountUsingBillingTariffTiers() {
+        assertEquals(new BigDecimal("0.00"), service.resolveEstimatedCommissionAmount(0));
+        assertEquals(new BigDecimal("0.50"), service.resolveEstimatedCommissionAmount(1));
+        assertEquals(new BigDecimal("1.50"), service.resolveEstimatedCommissionAmount(3));
+        assertEquals(new BigDecimal("4.40"), service.resolveEstimatedCommissionAmount(11));
+        assertEquals(new BigDecimal("30.30"), service.resolveEstimatedCommissionAmount(101));
     }
 
     @Test
@@ -119,8 +131,11 @@ class BatchProcessingServiceImplTest {
         when(paymentBatchRepository.findById(batch.getBatchId())).thenReturn(Optional.of(batch));
         when(coreCustomerClient.findByIdentification("1792103456001"))
                 .thenReturn(customer(customerUuid, "ACTIVO", true));
-        when(coreAccountClient.findByAccountNumber("0010000010599"))
-                .thenReturn(account("0010000010599", UUID.randomUUID().toString(), "ACTIVA", true, "MASS_PAYMENTS"));
+        CoreCompanyAccountValidationResponse validation = validCompanyAccount(UUID.randomUUID());
+        when(companyAccountValidationClient.validate(
+                customerUuid.toString(),
+                "0010000010599",
+                BigDecimal.TEN)).thenReturn(validation);
 
         service.processBatch(batch.getBatchId(), validEmptyBatch());
 
@@ -189,18 +204,14 @@ class BatchProcessingServiceImplTest {
         return response;
     }
 
-    private CoreAccountResponse account(
-            String accountNumber,
-            String customerUuid,
-            String status,
-            Boolean massPaymentMainAccount,
-            String accountPurpose) {
-        CoreAccountResponse response = new CoreAccountResponse();
-        response.setAccountNumber(accountNumber);
-        response.setCustomerUuid(customerUuid);
-        response.setStatus(status);
-        response.setMassPaymentMainAccount(massPaymentMainAccount);
-        response.setAccountPurpose(accountPurpose);
+    private CoreCompanyAccountValidationResponse validCompanyAccount(UUID customerUuid) {
+        CoreCompanyAccountValidationResponse response = new CoreCompanyAccountValidationResponse();
+        response.setValid(true);
+        response.setCompanyCustomerUuid(customerUuid.toString());
+        response.setMainAccountNumber("0010000010599");
+        response.setAccountStatus("ACTIVA");
+        response.setMassPaymentMainAccount(true);
+        response.setAmountCovered(true);
         return response;
     }
 }

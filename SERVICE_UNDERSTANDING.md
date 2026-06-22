@@ -12,7 +12,11 @@ POST /api/v1/switch-core/payment-reservations
 
 El `reservationUuid` devuelto por Core se guarda en los campos legacy `coreFundingId` de `"LOTE_PAGO_MASIVO"` y `"SOLICITUD_FONDEO_LOTE"`. Los eventos siguen publicando `coreFundingId` para no romper consumidores; desde esta fase ese valor es el `reservationUuid`.
 
-Antes del fondeo, `CoreCustomerClient` consulta `GET /api/v1/customers/by-identification/{companyRuc}`. El servicio valida el UUID, la identificacion, el estado activo y la habilitacion de pagos masivos. `CoreAccountClient` consulta despues `GET /api/v1/accounts/{sourceAccountNumber}` y valida titularidad, estado y uso como cuenta matriz. Solo entonces usa el `customerUuid` en la reserva. No existe dependencia funcional de `CORE_SWITCH_COMPANY_CUSTOMER_UUID`. `commissionAmount` se envia como `0.00` porque la comision aun se cobra al final en `billing-service`.
+Antes del fondeo, si el canal entrega `companyCustomerUuid`, el servicio usa `company-account-validation` de Core R9I
+para validar empresa, cuenta matriz y cobertura del monto. El cliente Customer por RUC queda solo como fallback cuando
+el UUID no viene informado. No existe dependencia funcional de `CORE_SWITCH_COMPANY_CUSTOMER_UUID`. `commissionAmount`
+se estima con el tarifario por tramos vigente para que la reserva de Core y el cobro final de `billing-service` usen el
+mismo subtotal de comision.
 
 La integracion legacy Switch-Core por gRPC fue retirada. El unico gRPC conservado en este servicio es el contrato interno `batch_gateway.proto`.
 

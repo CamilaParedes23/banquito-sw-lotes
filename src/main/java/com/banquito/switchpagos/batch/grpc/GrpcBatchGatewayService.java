@@ -34,7 +34,12 @@ public class GrpcBatchGatewayService extends BatchGatewayServiceGrpc.BatchGatewa
                     request.getFileName(),
                     request.getContentType(),
                     request.getContent().toByteArray());
-            UploadBatchResponse response = batchService.uploadBatch(file, null, request.getChannel(), request.getReceivedBy());
+            UploadBatchResponse response = batchService.uploadBatch(
+                    file,
+                    null,
+                    null,
+                    request.getChannel(),
+                    request.getReceivedBy());
             responseObserver.onNext(toGrpc(response));
             responseObserver.onCompleted();
         } catch (Exception exception) {

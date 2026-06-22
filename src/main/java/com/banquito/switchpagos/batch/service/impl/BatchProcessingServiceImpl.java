@@ -1,14 +1,14 @@
 package com.banquito.switchpagos.batch.service.impl;
 
 import com.banquito.switchpagos.batch.client.CoreBankingClient;
-import com.banquito.switchpagos.batch.client.CoreAccountClient;
+import com.banquito.switchpagos.batch.client.CoreCompanyAccountValidationClient;
 import com.banquito.switchpagos.batch.client.CoreCustomerClient;
 import com.banquito.switchpagos.batch.dto.event.PaymentLineRequestedEvent;
 import com.banquito.switchpagos.batch.dto.request.CoreFundingRequest;
 import com.banquito.switchpagos.batch.dto.request.ParsedBatchFile;
 import com.banquito.switchpagos.batch.dto.request.ParsedPaymentLine;
 import com.banquito.switchpagos.batch.dto.response.CoreCustomerResponse;
-import com.banquito.switchpagos.batch.dto.response.CoreAccountResponse;
+import com.banquito.switchpagos.batch.dto.response.CoreCompanyAccountValidationResponse;
 import com.banquito.switchpagos.batch.dto.response.CoreFundingResponse;
 import com.banquito.switchpagos.batch.enums.BatchStatus;
 import com.banquito.switchpagos.batch.enums.FundingRequestStatus;
@@ -75,7 +75,7 @@ public class BatchProcessingServiceImpl implements BatchProcessingService {
     private final BatchPaymentLineRepository paymentLineRepository;
     private final CoreBankingClient coreBankingClient;
     private final CoreCustomerClient coreCustomerClient;
-    private final CoreAccountClient coreAccountClient;
+    private final CoreCompanyAccountValidationClient companyAccountValidationClient;
     private final PaymentLineMapper paymentLineMapper;
     private final PaymentLineEventPublisher paymentLineEventPublisher;
     private final String defaultAccountingDate;
@@ -88,7 +88,7 @@ public class BatchProcessingServiceImpl implements BatchProcessingService {
             BatchPaymentLineRepository paymentLineRepository,
             CoreBankingClient coreBankingClient,
             CoreCustomerClient coreCustomerClient,
-            CoreAccountClient coreAccountClient,
+            CoreCompanyAccountValidationClient companyAccountValidationClient,
             PaymentLineMapper paymentLineMapper,
             PaymentLineEventPublisher paymentLineEventPublisher,
             @Value("${core.switch.default-accounting-date}") String defaultAccountingDate,
@@ -99,7 +99,7 @@ public class BatchProcessingServiceImpl implements BatchProcessingService {
         this.paymentLineRepository = paymentLineRepository;
         this.coreBankingClient = coreBankingClient;
         this.coreCustomerClient = coreCustomerClient;
-        this.coreAccountClient = coreAccountClient;
+        this.companyAccountValidationClient = companyAccountValidationClient;
         this.paymentLineMapper = paymentLineMapper;
         this.paymentLineEventPublisher = paymentLineEventPublisher;
         this.defaultAccountingDate = defaultAccountingDate;
@@ -127,7 +127,7 @@ public class BatchProcessingServiceImpl implements BatchProcessingService {
 
         CoreCustomerResponse company;
         try {
-            company = resolveCompany(batch);
+            company = resolveCompany(batch, parsedBatchFile.getCompanyCustomerUuid());
         } catch (CoreCustomerClientException exception) {
             updateBatchStatus(batch, BatchStatus.RECHAZADO, formatCompanyRejection(exception));
             LOG.info("Batch rejected during company resolution. batchId={}, code={}, httpStatus={}",
@@ -136,7 +136,7 @@ public class BatchProcessingServiceImpl implements BatchProcessingService {
         }
 
         try {
-            validateSourceAccount(batch, company);
+            validateCompanyAccount(batch, company);
         } catch (CoreAccountClientException exception) {
             updateBatchStatus(batch, BatchStatus.RECHAZADO, formatAccountRejection(exception));
             LOG.info("Batch rejected during source account validation. batchId={}, code={}, httpStatus={}",
@@ -278,7 +278,21 @@ public class BatchProcessingServiceImpl implements BatchProcessingService {
         return fundingRequest;
     }
 
-    private CoreCustomerResponse resolveCompany(PaymentBatch batch) {
+    private CoreCustomerResponse resolveCompany(PaymentBatch batch, String companyCustomerUuid) {
+        if (StringUtils.hasText(companyCustomerUuid)) {
+            try {
+                CoreCustomerResponse company = new CoreCustomerResponse();
+                company.setCustomerUuid(UUID.fromString(companyCustomerUuid.trim()));
+                company.setIdentification(batch.getCompanyRuc());
+                return company;
+            } catch (IllegalArgumentException exception) {
+                throw new CoreCustomerClientException(
+                        COMPANY_CUSTOMER_RESOLUTION_FAILED,
+                        "companyCustomerUuid no tiene formato UUID valido.",
+                        exception,
+                        null);
+            }
+        }
         CoreCustomerResponse company = coreCustomerClient.findByIdentification(batch.getCompanyRuc());
         if (company == null || company.getCustomerUuid() == null) {
             throw new CoreCustomerClientException(
@@ -312,33 +326,46 @@ public class BatchProcessingServiceImpl implements BatchProcessingService {
         return exception.getCode() + ": " + exception.getMessage();
     }
 
-    private void validateSourceAccount(PaymentBatch batch, CoreCustomerResponse company) {
-        CoreAccountResponse account = coreAccountClient.findByAccountNumber(batch.getSourceAccountNumber());
-        if (account == null || !StringUtils.hasText(account.getAccountNumber())) {
+    private void validateCompanyAccount(PaymentBatch batch, CoreCustomerResponse company) {
+        CoreCompanyAccountValidationResponse validation = companyAccountValidationClient.validate(
+                company.getCustomerUuid().toString(),
+                batch.getSourceAccountNumber(),
+                batch.getControlAmount());
+        if (validation == null || !Boolean.TRUE.equals(validation.getValid())) {
             throw new CoreAccountClientException(
                     "SOURCE_ACCOUNT_VALIDATION_FAILED",
-                    "Core Account no devolvio informacion de la cuenta matriz.");
+                    validation != null && StringUtils.hasText(validation.getMessage())
+                            ? validation.getMessage()
+                            : "Core no aprobo la validacion de empresa y cuenta matriz.");
         }
-        if (!batch.getSourceAccountNumber().equals(account.getAccountNumber().trim())) {
+        if (!StringUtils.hasText(validation.getCompanyCustomerUuid())
+                || !company.getCustomerUuid().toString()
+                        .equalsIgnoreCase(validation.getCompanyCustomerUuid().trim())) {
+            throw new CoreAccountClientException(
+                    SOURCE_ACCOUNT_NOT_OWNED_BY_COMPANY,
+                    "Core devolvio una empresa distinta a la autenticada.");
+        }
+        if (!StringUtils.hasText(validation.getMainAccountNumber())
+                || !batch.getSourceAccountNumber().equals(validation.getMainAccountNumber().trim())) {
             throw new CoreAccountClientException(
                     "SOURCE_ACCOUNT_VALIDATION_FAILED",
                     "La cuenta devuelta por Core no coincide con la cuenta matriz del lote.");
         }
-        if (!StringUtils.hasText(account.getCustomerUuid())
-                || !company.getCustomerUuid().toString().equalsIgnoreCase(account.getCustomerUuid().trim())) {
-            throw new CoreAccountClientException(
-                    SOURCE_ACCOUNT_NOT_OWNED_BY_COMPANY,
-                    "La cuenta matriz no pertenece a la empresa autenticada.");
-        }
-        if (StringUtils.hasText(account.getStatus()) && !isActiveAccountStatus(account.getStatus())) {
+        if (StringUtils.hasText(validation.getAccountStatus())
+                && !isActiveAccountStatus(validation.getAccountStatus())) {
             throw new CoreAccountClientException(
                     SOURCE_ACCOUNT_INACTIVE,
                     "La cuenta matriz no se encuentra activa.");
         }
-        if (Boolean.FALSE.equals(account.getMassPaymentMainAccount())) {
+        if (Boolean.FALSE.equals(validation.getMassPaymentMainAccount())) {
             throw new CoreAccountClientException(
                     SOURCE_ACCOUNT_NOT_ELIGIBLE,
                     "La cuenta informada no esta habilitada como cuenta matriz de pagos masivos.");
+        }
+        if (Boolean.FALSE.equals(validation.getAmountCovered())) {
+            throw new CoreAccountClientException(
+                    "SOURCE_ACCOUNT_INSUFFICIENT_FUNDS",
+                    "La cuenta matriz no cubre el monto total del lote.");
         }
     }
 
@@ -362,11 +389,13 @@ public class BatchProcessingServiceImpl implements BatchProcessingService {
         request.setSourceAccountNumber(batch.getSourceAccountNumber());
         request.setMainAccountNumber(batch.getSourceAccountNumber());
         request.setTotalAmount(batch.getControlAmount());
-        request.setCommissionAmount(BigDecimal.ZERO);
+        request.setCommissionAmount(resolveEstimatedCommissionAmount(batch.getTotalRecords()));
         request.setCurrency(batch.getCurrency());
         request.setConcept("Fondeo lote de pagos masivos " + batch.getServiceType());
         request.setChannel(coreSwitchChannel);
-        request.setAccountingDate(resolveAccountingDate());
+        if (StringUtils.hasText(defaultAccountingDate)) {
+            request.setAccountingDate(resolveAccountingDate());
+        }
         request.setIdempotencyKey(fundingRequest.getIdempotencyKey());
         try {
             return coreBankingClient.requestFunding(request);
@@ -377,6 +406,31 @@ public class BatchProcessingServiceImpl implements BatchProcessingService {
             fallbackResponse.setMessage(exception.getMessage());
             return fallbackResponse;
         }
+    }
+
+    BigDecimal resolveEstimatedCommissionAmount(Integer totalRecords) {
+        int volume = totalRecords == null ? 0 : totalRecords;
+        BigDecimal unitFee;
+        if (volume <= 0) {
+            unitFee = amount("0.00");
+        } else if (volume <= 10) {
+            unitFee = amount("0.50");
+        } else if (volume <= 100) {
+            unitFee = amount("0.40");
+        } else if (volume <= 500) {
+            unitFee = amount("0.30");
+        } else if (volume <= 1000) {
+            unitFee = amount("0.20");
+        } else if (volume <= 10000) {
+            unitFee = amount("0.10");
+        } else {
+            unitFee = amount("0.05");
+        }
+        return unitFee.multiply(BigDecimal.valueOf(volume)).setScale(2);
+    }
+
+    private BigDecimal amount(String value) {
+        return new BigDecimal(value).setScale(2);
     }
 
     private LocalDate resolveAccountingDate() {

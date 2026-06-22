@@ -14,7 +14,8 @@ El resultado real de fondeo/reserva se persiste en el campo legacy `coreFundingI
 
 La integracion legacy Switch-Core por gRPC fue retirada. El gRPC que permanece en este servicio corresponde solo al contrato interno `batch_gateway.proto`.
 
-El request a Core envia `commissionAmount=0.00` temporalmente. El cobro de comision sigue ocurriendo al final en `billing-service`; queda pendiente confirmar con el equipo Core si la comision debe reservarse desde el inicio.
+El request a Core envia `commissionAmount` estimado con el mismo tarifario por tramos que usa `billing-service`.
+Esto mantiene consistente la reserva de Core R9I con el cobro final de comision.
 
 Autenticacion vigente:
 
@@ -266,5 +267,6 @@ Invoke-RestMethod -Method Get -Uri "http://localhost:8010/api/v1/batches/$($resp
 - La empresa se resuelve dinamicamente por RUC mediante `CoreCustomerClient`; no existe UUID global de empresa para fondeo.
 - El fondeo global usa `CoreBankingClient` REST via Kong.
 - El contrato gRPC interno conservado se define en `src/main/proto/batch_gateway.proto`.
-- `commissionAmount` se envia como `0.00` mientras billing conserve el cobro final de comision.
-- La cuenta matriz se valida mediante `CoreAccountClient` contra `/api/v1/accounts/{accountNumber}` antes del fondeo.
+- `commissionAmount` se estima con tarifario por tramos antes del fondeo para que Core R9I reserve y cobre el mismo valor.
+- La cuenta matriz se valida mediante `company-account-validation` cuando el canal entrega `companyCustomerUuid`; el
+  cliente Customer legacy queda solo como fallback cuando el UUID no viene informado.

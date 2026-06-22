@@ -79,13 +79,19 @@ public class BatchServiceImpl implements BatchService {
 
     @Override
     @Transactional
-    public UploadBatchResponse uploadBatch(MultipartFile file, String companyRuc, String channel, String receivedBy) {
+    public UploadBatchResponse uploadBatch(
+            MultipartFile file,
+            String companyRuc,
+            String companyCustomerUuid,
+            String channel,
+            String receivedBy) {
         validateFile(file);
         String originalFileName = StringUtils.cleanPath(file.getOriginalFilename());
         String sanitizedFileName = sanitizeFileName(originalFileName);
         String fileContent = readFileContent(file);
         ParsedBatchFile parsedBatchFile = batchFileParser.parse(fileContent);
         validateAuthenticatedCompanyRuc(companyRuc, parsedBatchFile.getCompanyRuc());
+        parsedBatchFile.setCompanyCustomerUuid(trimToNull(companyCustomerUuid));
         OffsetDateTime now = OffsetDateTime.now();
 
         PaymentBatch batch = new PaymentBatch();

@@ -21,11 +21,11 @@ class BatchControllerTest {
 
         BadRequestException exception = assertThrows(
                 BadRequestException.class,
-                () -> controller.uploadBatch(file, null, "PORTAL_WEB", "frontend-user"));
+                () -> controller.uploadBatch(file, null, null, "PORTAL_WEB", "frontend-user"));
 
         assertEquals("COMPANY_RUC_REQUIRED", exception.getCode());
         assertEquals("El RUC de la empresa autenticada es obligatorio para cargar el lote.",
                 exception.getMessage());
-        verify(batchService, never()).uploadBatch(file, null, "PORTAL_WEB", "frontend-user");
+        verify(batchService, never()).uploadBatch(file, null, null, "PORTAL_WEB", "frontend-user");
     }
 }
