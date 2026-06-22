@@ -221,6 +221,7 @@ public class BatchServiceImpl implements BatchService {
         response.setTotalRecords(batch.getTotalRecords());
         response.setControlAmount(batch.getControlAmount());
         response.setCompanyRuc(batch.getCompanyRuc());
+        response.setChannel(batch.getChannel());
         return response;
     }
 

@@ -13,6 +13,7 @@ public class BatchHistoryItemResponse {
     private Integer totalRecords;
     private BigDecimal controlAmount;
     private String companyRuc;
+    private String channel;
 
     public UUID getBatchId() { return batchId; }
     public void setBatchId(UUID batchId) { this.batchId = batchId; }
@@ -28,4 +29,6 @@ public class BatchHistoryItemResponse {
     public void setControlAmount(BigDecimal controlAmount) { this.controlAmount = controlAmount; }
     public String getCompanyRuc() { return companyRuc; }
     public void setCompanyRuc(String companyRuc) { this.companyRuc = companyRuc; }
+    public String getChannel() { return channel; }
+    public void setChannel(String channel) { this.channel = channel; }
 }
